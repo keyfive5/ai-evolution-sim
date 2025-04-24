@@ -127,13 +127,12 @@ class Prophet(Agent):
         super().__init__()
         self.color = (255, 0, 255)   # magenta, not blue
     def move(self):
-        # ignore brain—always broadcast “divine” message
-        # but still move randomly so they roam
         dx, dy = random.choice([(0,-1),(0,1),(-1,0),(1,0)])
         self.x = max(0, min(GRID_SIZE-1, self.x + dx))
         self.y = max(0, min(GRID_SIZE-1, self.y + dy))
-        # prophets always broadcast message=1
+        # prophets just broadcast—they no longer terraform
         self.message = 1
+
     def draw(self):
         rect = pygame.Rect(self.x*TILE_SIZE, self.y*TILE_SIZE, TILE_SIZE, TILE_SIZE)
         pygame.draw.rect(screen, self.color, rect)

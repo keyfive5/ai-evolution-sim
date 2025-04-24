@@ -22,6 +22,8 @@ TILE_SIZE = 32
 WINDOW_WIDTH = GRID_SIZE * TILE_SIZE
 WINDOW_HEIGHT = GRID_SIZE * TILE_SIZE
 
+UPDATE_PER_FRAME = 1   # start with 1 simulation step per draw
+
 #Start game and time
 pygame.init()
 screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
@@ -153,80 +155,91 @@ max_scores = []
 running = True
 
 while running:
-    # clear messages
-    message_board = [[0]*GRID_SIZE for _ in range(GRID_SIZE)]
-    screen.fill((0, 0, 0))
-    draw_world()
-    screen.fill((0, 0, 0))
+    # ── Simulation updates ──
+    for _ in range(UPDATE_PER_FRAME):
+        # 1) Clear message board each step
+        message_board = [[0]*GRID_SIZE for _ in range(GRID_SIZE)]
+
+        # 2) Move & broadcast
+        for agent in agents:
+            agent.move()
+            message_board[agent.y][agent.x] = agent.message
+
+        # 3) Evolution check
+        step_counter += 1
+        if step_counter >= GENERATION_STEPS:
+            # --- sort by score ---
+            agents.sort(key=lambda a: a.score, reverse=True)
+            survivors = agents[:POPULATION//2]
+
+            # --- reproduce + mutate ---
+            new_agents = []
+            for parent in survivors:
+                new_agents.append(parent)
+                child = Agent()
+                child.brain.load_state_dict(parent.brain.state_dict())
+                for p in child.brain.parameters():
+                    p.data += MUTATION_RATE * torch.randn_like(p)
+                new_agents.append(child)
+
+            # ── PROPHET INJECTION (exactly here) ──
+            if generation % PROPHET_INTERVAL == 0:
+                for _ in range(PROPHET_COUNT):
+                    p = Prophet()
+                    p.x = random.randrange(GRID_SIZE)
+                    p.y = random.randrange(GRID_SIZE)
+                    new_agents.append(p)
+
+            # --- record stats ---
+            scores = [a.score for a in agents]
+            avg_scores.append(sum(scores)/len(scores))
+            max_scores.append(max(scores))
+
+            # --- reset population, but keep prophets ---
+            prophets = [a for a in new_agents if isinstance(a, Prophet)]
+            others  = [a for a in new_agents if not isinstance(a, Prophet)]
+
+            # fill up to POPULATION: prophets first, then top others
+            agents = prophets + others[: POPULATION - len(prophets) ]
+
+            # in case you accidentally overfill:
+            agents = agents[:POPULATION]
+
+            # now reset each agent’s score & position
+            for a in agents:
+                a.score = 0
+                a.x = random.randrange(GRID_SIZE)
+                a.y = random.randrange(GRID_SIZE)
+
+
+            step_counter = 0
+            generation += 1
+            print(f"=== Generation {generation} ===")
+
+    # ── Rendering ──
+    screen.fill((0,0,0))
     draw_world()
     for agent in agents:
-        agent.move()
-        message_board[agent.y][agent.x] = agent.message
         agent.draw()
 
-
-    #drawstats
+    # Stats + speed display
     screen.blit(font.render(f"Gen: {generation}", True, (255,255,255)), (10,10))
     if avg_scores:
         screen.blit(font.render(f"Avg: {avg_scores[-1]:.1f}", True, (255,255,255)), (10,30))
         screen.blit(font.render(f"Max: {max_scores[-1]:.1f}", True, (255,255,255)), (10,50))
+    screen.blit(font.render(f"Speed: {UPDATE_PER_FRAME}×", True, (255,255,255)), (10,70))
 
     pygame.display.flip()
-    clock.tick(60)
+    clock.tick(5)    # ← set to 5 FPS so “1×” is slow
 
-        #––– evolution check –––
-    step_counter += 1
-    if step_counter >= GENERATION_STEPS:
-        # 1. sort by score descending
-        agents.sort(key=lambda a: a.score, reverse=True)
-        survivors = agents[:POPULATION//2]
-
-        # 2. reproduce + mutate
-        new_agents = []
-        for parent in survivors:
-            # keep parent
-            new_agents.append(parent)
-            # clone + mutate child
-            child = Agent()
-            child.brain.load_state_dict(parent.brain.state_dict())
-            for p in child.brain.parameters():
-                p.data += MUTATION_RATE * torch.randn_like(p)
-            new_agents.append(child)
-        
-        if generation % PROPHET_INTERVAL == 0:
-            for _ in range(PROPHET_COUNT):
-                p = Prophet()
-                p.x, p.y = random.randrange(GRID_SIZE), random.randrange(GRID_SIZE)
-                new_agents.append(p)
-
-        scores = [a.score for a in agents]
-        avg_scores.append(sum(scores) / len(scores))
-        max_scores.append(max(scores))
-
-
-        # 3. reset population
-        # make sure prophets get a chance, then fill with top survivors/children
-        # always include any Prophet instances
-        prophets = [a for a in new_agents if isinstance(a, Prophet)]
-        others  = [a for a in new_agents if not isinstance(a, Prophet)]
-        # pick enough “others” to reach POPULATION
-        needed = POPULATION - len(prophets)
-        selected = others[:max(0, needed)]
-        agents = prophets + selected
-        # if too many (e.g. >POPULATION), you can randomly trim:
-        if len(agents) > POPULATION:
-            agents = random.sample(agents, POPULATION)
-
-        for ag in agents:
-            ag.score = 0
-            ag.x = random.randint(0, GRID_SIZE-1)
-            ag.y = random.randint(0, GRID_SIZE-1)
-
-        step_counter = 0
-        generation  += 1
-        print(f"=== Generation {generation} ===")
-
-
+    # ── Event handling ──
     for event in pygame.event.get():
-        if event.type == pygame.QUIT:
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_UP:
+                UPDATE_PER_FRAME = min(10, UPDATE_PER_FRAME+1)
+            elif event.key == pygame.K_DOWN:
+                UPDATE_PER_FRAME = max(1, UPDATE_PER_FRAME-1)
+        elif event.type == pygame.QUIT:
             running = False
+
+

@@ -8,6 +8,8 @@ A simulation of AI agents with neural network brains, evolving through natural s
 - Neural network "brains" using PyTorch
 - Softmax-based stochastic movement (pseudo free-will)
 - Future: Evolution, prophet injection, memory, and language
+- Evolutionary algorithm: agents score food (+10), water (–5), idle (–1) and reproduce every N steps
+
 
 ## Requirements
 

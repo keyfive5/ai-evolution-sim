@@ -6,6 +6,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+POPULATION        = 20
+GENERATION_STEPS  = 200
+MUTATION_RATE     = 0.1
+
 #Create Window
 GRID_SIZE = 20
 TILE_SIZE = 32
@@ -39,6 +43,7 @@ class Agent:
         self.y = random.randint(0, GRID_SIZE-1)
         self.color = (255, 0, 0)
         self.brain = AgentBrain()
+        self.score = 0
 
     def draw(self):
         pygame.draw.rect(screen, self.color,
@@ -73,6 +78,11 @@ class Agent:
         dx, dy = [(0, -1), (0, 1), (-1, 0), (1, 0)][action]
         self.x = max(0, min(GRID_SIZE-1, self.x + dx))
         self.y = max(0, min(GRID_SIZE-1, self.y + dy))
+        tile = world[self.y][self.x]
+        if   tile == 'food':  self.score += 10
+        elif tile == 'water': self.score -= 5
+        else:                  self.score -= 1
+
 
 
 #define agent brain (simple neural net)
@@ -86,15 +96,16 @@ class AgentBrain(nn.Module):
         x = F.relu(self.fc1(x))
         return self.fc2(x)  # raw logits (no softmax)
 
-
-agent = Agent()
+#replaced agent with agents
+agents = [Agent() for _ in range(20)]  # Create 20 agents
 running = True
 
 while running:
     screen.fill((0, 0, 0))
     draw_world()
-    agent.move()
-    agent.draw()
+    for agent in agents:
+        agent.move()
+        agent.draw()
     pygame.display.flip()
     clock.tick(5)
 

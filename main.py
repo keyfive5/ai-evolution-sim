@@ -47,6 +47,8 @@ class Agent:
         self.color = (255, 0, 0)
         self.brain = AgentBrain()
         self.score = 0
+        self.message = 0  # 0 or 1 for now
+
 
     def draw(self):
         pygame.draw.rect(screen, self.color,
@@ -61,7 +63,16 @@ class Agent:
                 ny = max(0, min(GRID_SIZE-1, self.y + dy))
                 tile = world[ny][nx]
                 view.append(self.tile_to_number(tile))
-        return torch.tensor(view, dtype=torch.float32)
+                # after view.append(...)
+                # at end of sense(), before returning:
+                msg_sum = 0
+                for dy in [-1,0,1]:
+                    for dx in [-1,0,1]:
+                        ny = max(0, min(GRID_SIZE-1, self.y+dy))
+                        nx = max(0, min(GRID_SIZE-1, self.x+dx))
+                        msg_sum += message_board[ny][nx]
+                # now return a length-10 tensor
+                return torch.tensor(view + [msg_sum], dtype=torch.float32)
 
     def tile_to_number(self, tile):
         return {
@@ -73,18 +84,22 @@ class Agent:
     def move(self):
         input_vec = self.sense()
         output = self.brain(input_vec)
-        #add randomness to output for now
         action_probs = F.softmax(output, dim=0).detach().numpy()
-        action = random.choices([0, 1, 2, 3], weights=action_probs)[0]
+        action = random.choices([0,1,2,3], weights=action_probs)[0]
 
-
-        dx, dy = [(0, -1), (0, 1), (-1, 0), (1, 0)][action]
+        dx, dy = [(0,-1),(0,1),(-1,0),(1,0)][action]
         self.x = max(0, min(GRID_SIZE-1, self.x + dx))
         self.y = max(0, min(GRID_SIZE-1, self.y + dy))
+
+        # —— scoring —— 
         tile = world[self.y][self.x]
         if   tile == 'food':  self.score += 10
         elif tile == 'water': self.score -= 5
         else:                  self.score -= 1
+
+        # —— broadcast message based on current tile —— 
+        self.message = 1 if tile == 'food' else 0
+
 
 
 
@@ -92,7 +107,7 @@ class Agent:
 class AgentBrain(nn.Module):
     def __init__(self):
         super().__init__()
-        self.fc1 = nn.Linear(9, 16)  # 3x3 view = 9 tiles
+        self.fc1 = nn.Linear(10, 16)
         self.fc2 = nn.Linear(16, 4)  # output = up, down, left, right
 
     def forward(self, x):
@@ -101,6 +116,8 @@ class AgentBrain(nn.Module):
 
 #replaced agent with agents
 agents = [Agent() for _ in range(20)]  # Create 20 agents
+# after agents = [...]
+message_board = [[0]*GRID_SIZE for _ in range(GRID_SIZE)]
 step_counter = 0
 generation   = 1
 avg_scores = []
@@ -112,6 +129,7 @@ while running:
     draw_world()
     for agent in agents:
         agent.move()
+        message_board[agent.y][agent.x] = agent.message
         agent.draw()
 
 

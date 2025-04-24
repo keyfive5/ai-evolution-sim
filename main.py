@@ -10,8 +10,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 POPULATION        = 20
-GENERATION_STEPS  = 200
+GENERATION_STEPS  = 100
 MUTATION_RATE     = 0.1
+PROPHET_INTERVAL = 5   # every 5 generations
+PROPHET_COUNT    = 2   # how many prophets to drop in
+
 
 #Create Window
 GRID_SIZE = 20
@@ -55,7 +58,7 @@ class Agent:
             pygame.Rect(self.x*TILE_SIZE, self.y*TILE_SIZE, TILE_SIZE, TILE_SIZE))
 
     def sense(self):
-        # Get 3x3 grid centered on the agent
+        # Get 3×3 grid centered on the agent
         view = []
         for dy in [-1, 0, 1]:
             for dx in [-1, 0, 1]:
@@ -63,16 +66,19 @@ class Agent:
                 ny = max(0, min(GRID_SIZE-1, self.y + dy))
                 tile = world[ny][nx]
                 view.append(self.tile_to_number(tile))
-                # after view.append(...)
-                # at end of sense(), before returning:
-                msg_sum = 0
-                for dy in [-1,0,1]:
-                    for dx in [-1,0,1]:
-                        ny = max(0, min(GRID_SIZE-1, self.y+dy))
-                        nx = max(0, min(GRID_SIZE-1, self.x+dx))
-                        msg_sum += message_board[ny][nx]
-                # now return a length-10 tensor
-                return torch.tensor(view + [msg_sum], dtype=torch.float32)
+
+        # Sum up neighbor messages from the message board
+        msg_sum = 0
+        for dy in [-1, 0, 1]:
+            for dx in [-1, 0, 1]:
+                nx = max(0, min(GRID_SIZE-1, self.x + dx))
+                ny = max(0, min(GRID_SIZE-1, self.y + dy))
+                msg_sum += message_board[ny][nx]
+
+        # Return a length-10 tensor: 9 tile values + message sum
+        return torch.tensor(view + [msg_sum], dtype=torch.float32)
+
+                
 
     def tile_to_number(self, tile):
         return {
@@ -114,6 +120,28 @@ class AgentBrain(nn.Module):
         x = F.relu(self.fc1(x))
         return self.fc2(x)  # raw logits (no softmax)
 
+class Prophet(Agent):
+    def __init__(self):
+        super().__init__()
+        self.color = (255, 0, 255)   # magenta, not blue
+    def move(self):
+        # ignore brain—always broadcast “divine” message
+        # but still move randomly so they roam
+        dx, dy = random.choice([(0,-1),(0,1),(-1,0),(1,0)])
+        self.x = max(0, min(GRID_SIZE-1, self.x + dx))
+        self.y = max(0, min(GRID_SIZE-1, self.y + dy))
+        # prophets always broadcast message=1
+        self.message = 1
+    def draw(self):
+        rect = pygame.Rect(self.x*TILE_SIZE, self.y*TILE_SIZE, TILE_SIZE, TILE_SIZE)
+        pygame.draw.rect(screen, self.color, rect)
+        pygame.draw.rect(screen, (0,0,0), rect, width=2)  # black outline
+        if self.message==1:
+            # yellow dot in center
+            pygame.draw.circle(screen, (255,255,0), rect.center, TILE_SIZE//4)
+
+
+
 #replaced agent with agents
 agents = [Agent() for _ in range(20)]  # Create 20 agents
 # after agents = [...]
@@ -125,6 +153,10 @@ max_scores = []
 running = True
 
 while running:
+    # clear messages
+    message_board = [[0]*GRID_SIZE for _ in range(GRID_SIZE)]
+    screen.fill((0, 0, 0))
+    draw_world()
     screen.fill((0, 0, 0))
     draw_world()
     for agent in agents:
@@ -140,7 +172,7 @@ while running:
         screen.blit(font.render(f"Max: {max_scores[-1]:.1f}", True, (255,255,255)), (10,50))
 
     pygame.display.flip()
-    clock.tick(5)
+    clock.tick(60)
 
         #––– evolution check –––
     step_counter += 1
@@ -161,13 +193,30 @@ while running:
                 p.data += MUTATION_RATE * torch.randn_like(p)
             new_agents.append(child)
         
+        if generation % PROPHET_INTERVAL == 0:
+            for _ in range(PROPHET_COUNT):
+                p = Prophet()
+                p.x, p.y = random.randrange(GRID_SIZE), random.randrange(GRID_SIZE)
+                new_agents.append(p)
+
         scores = [a.score for a in agents]
         avg_scores.append(sum(scores) / len(scores))
         max_scores.append(max(scores))
 
 
         # 3. reset population
-        agents[:] = new_agents[:POPULATION]
+        # make sure prophets get a chance, then fill with top survivors/children
+        # always include any Prophet instances
+        prophets = [a for a in new_agents if isinstance(a, Prophet)]
+        others  = [a for a in new_agents if not isinstance(a, Prophet)]
+        # pick enough “others” to reach POPULATION
+        needed = POPULATION - len(prophets)
+        selected = others[:max(0, needed)]
+        agents = prophets + selected
+        # if too many (e.g. >POPULATION), you can randomly trim:
+        if len(agents) > POPULATION:
+            agents = random.sample(agents, POPULATION)
+
         for ag in agents:
             ag.score = 0
             ag.x = random.randint(0, GRID_SIZE-1)

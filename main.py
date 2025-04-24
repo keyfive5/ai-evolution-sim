@@ -113,12 +113,24 @@ while running:
     for agent in agents:
         agent.move()
         agent.draw()
-        gen_surf = font.render(f"Gen: {generation}", True, (255,255,255))
-        avg_surf = font.render(f"Avg: {avg_scores[-1]:.1f}", True, (255,255,255))
-        max_surf = font.render(f"Max: {max_scores[-1]:.1f}", True, (255,255,255))
-        screen.blit(gen_surf, (10, 10))
-        screen.blit(avg_surf, (10, 30))
-        screen.blit(max_surf, (10, 50))
+
+    gen_surf = font.render(f"Gen: {generation}", True, (255,255,255))
+    avg_surf = font.render(f"Avg: {avg_scores[-1]:.1f}", True, (255,255,255))
+    max_surf = font.render(f"Max: {max_scores[-1]:.1f}", True, (255,255,255))
+    screen.blit(gen_surf, (10, 10))
+    screen.blit(avg_surf, (10, 30))
+    screen.blit(max_surf, (10, 50))
+    #drawstats
+    screen.blit(font.render(f"Gen: {generation}", True, (255,255,255)), (10,10))
+    if avg_scores:
+        screen.blit(font.render(f"Avg: {avg_scores[-1]:.1f}", True, (255,255,255)), (10,30))
+        screen.blit(font.render(f"Max: {max_scores[-1]:.1f}", True, (255,255,255)), (10,50))
+
+    pygame.display.flip()
+    clock.tick(5)
+
+
+
 
     pygame.display.flip()
     clock.tick(5)

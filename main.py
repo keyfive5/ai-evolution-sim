@@ -1,6 +1,9 @@
 import pygame
 import random
 
+pygame.font.init()
+font = pygame.font.SysFont(None, 24)
+
 #add Pytorch imports
 import torch
 import torch.nn as nn
@@ -100,6 +103,8 @@ class AgentBrain(nn.Module):
 agents = [Agent() for _ in range(20)]  # Create 20 agents
 step_counter = 0
 generation   = 1
+avg_scores = []
+max_scores = []
 running = True
 
 while running:
@@ -108,6 +113,13 @@ while running:
     for agent in agents:
         agent.move()
         agent.draw()
+        gen_surf = font.render(f"Gen: {generation}", True, (255,255,255))
+        avg_surf = font.render(f"Avg: {avg_scores[-1]:.1f}", True, (255,255,255))
+        max_surf = font.render(f"Max: {max_scores[-1]:.1f}", True, (255,255,255))
+        screen.blit(gen_surf, (10, 10))
+        screen.blit(avg_surf, (10, 30))
+        screen.blit(max_surf, (10, 50))
+
     pygame.display.flip()
     clock.tick(5)
 
@@ -129,6 +141,11 @@ while running:
             for p in child.brain.parameters():
                 p.data += MUTATION_RATE * torch.randn_like(p)
             new_agents.append(child)
+        
+        scores = [a.score for a in agents]
+        avg_scores.append(sum(scores) / len(scores))
+        max_scores.append(max(scores))
+
 
         # 3. reset population
         agents[:] = new_agents[:POPULATION]

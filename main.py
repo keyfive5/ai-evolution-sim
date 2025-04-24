@@ -98,6 +98,8 @@ class AgentBrain(nn.Module):
 
 #replaced agent with agents
 agents = [Agent() for _ in range(20)]  # Create 20 agents
+step_counter = 0
+generation   = 1
 running = True
 
 while running:
@@ -108,6 +110,37 @@ while running:
         agent.draw()
     pygame.display.flip()
     clock.tick(5)
+
+        #––– evolution check –––
+    step_counter += 1
+    if step_counter >= GENERATION_STEPS:
+        # 1. sort by score descending
+        agents.sort(key=lambda a: a.score, reverse=True)
+        survivors = agents[:POPULATION//2]
+
+        # 2. reproduce + mutate
+        new_agents = []
+        for parent in survivors:
+            # keep parent
+            new_agents.append(parent)
+            # clone + mutate child
+            child = Agent()
+            child.brain.load_state_dict(parent.brain.state_dict())
+            for p in child.brain.parameters():
+                p.data += MUTATION_RATE * torch.randn_like(p)
+            new_agents.append(child)
+
+        # 3. reset population
+        agents[:] = new_agents[:POPULATION]
+        for ag in agents:
+            ag.score = 0
+            ag.x = random.randint(0, GRID_SIZE-1)
+            ag.y = random.randint(0, GRID_SIZE-1)
+
+        step_counter = 0
+        generation  += 1
+        print(f"=== Generation {generation} ===")
+
 
     for event in pygame.event.get():
         if event.type == pygame.QUIT:

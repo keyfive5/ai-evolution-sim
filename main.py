@@ -9,6 +9,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from opensimplex import OpenSimplex
+
 POPULATION        = 20
 GENERATION_STEPS  = 100
 MUTATION_RATE     = 0.1
@@ -24,13 +26,31 @@ WINDOW_HEIGHT = GRID_SIZE * TILE_SIZE
 
 UPDATE_PER_FRAME = 1   # start with 1 simulation step per draw
 
+
+# generate a smooth heightmap via OpenSimplex noise
+simplex = OpenSimplex(seed=random.randrange(100000))
+world = []
+scale = 20.0  # tweak for larger/smaller biomes
+for y in range(GRID_SIZE):
+    row = []
+    for x in range(GRID_SIZE):
+        # noise2 returns −1…1
+        h = simplex.noise2(x/scale, y/scale)
+        if h < -0.2:
+            row.append('water')
+        elif h < 0.0:
+            row.append('empty')   # beach/desert
+        elif h < 0.5:
+            row.append('food')    # grass/plains
+        else:
+            row.append('water')   # mountains are “dry” water for now
+    world.append(row)
+
 #Start game and time
 pygame.init()
 screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
 clock = pygame.time.Clock()
 
-# World map grid
-world = [[random.choice(['empty', 'food', 'water']) for _ in range(GRID_SIZE)] for _ in range(GRID_SIZE)]
 
 colors = {
     'empty': (200, 200, 200),

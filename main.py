@@ -26,6 +26,11 @@ WINDOW_HEIGHT = GRID_SIZE * TILE_SIZE
 
 UPDATE_PER_FRAME = 1   # start with 1 simulation step per draw
 
+# tuning knobs
+EVAPORATION = 0.90   # how quickly trails fade each step
+DIFFUSION   = 0.10     # how much spreads to neighbors
+DEPOSIT     = 0.2    # how much each broadcast addsupd
+
 
 # generate a smooth heightmap via OpenSimplex noise
 simplex = OpenSimplex(seed=random.randrange(100000))
@@ -167,6 +172,7 @@ class Prophet(Agent):
 agents = [Agent() for _ in range(20)]  # Create 20 agents
 # after agents = [...]
 message_board = [[0]*GRID_SIZE for _ in range(GRID_SIZE)]
+pheromone = [[0.0]*GRID_SIZE for _ in range(GRID_SIZE)]
 step_counter = 0
 generation   = 1
 avg_scores = []
@@ -176,13 +182,32 @@ running = True
 while running:
     # ── Simulation updates ──
     for _ in range(UPDATE_PER_FRAME):
-        # 1) Clear message board each step
-        message_board = [[0]*GRID_SIZE for _ in range(GRID_SIZE)]
+       # ─── Evaporate & diffuse pheromones ───
+        new_pher = [[0.0]*GRID_SIZE for _ in range(GRID_SIZE)]
+        for y in range(GRID_SIZE):
+            for x in range(GRID_SIZE):
+                # evaporate
+                val = pheromone[y][x] * EVAPORATION
+                # simple 8-neighborhood diffusion
+                neigh = 0
+                for dy in (-1,0,1):
+                    for dx in (-1,0,1):
+                        if dx==0 and dy==0: continue
+                        ny, nx = (y+dy)%GRID_SIZE, (x+dx)%GRID_SIZE
+                        neigh += pheromone[ny][nx]
+                val += (neigh/8) * DIFFUSION
+                new_pher[y][x] = val
+        pheromone = new_pher
 
-        # 2) Move & broadcast
+        # ─── Move agents & deposit pheromones ───
+        # 1) clear message_board
+        message_board = [[0]*GRID_SIZE for _ in range(GRID_SIZE)]
+        # 2) move + deposit
         for agent in agents:
             agent.move()
             message_board[agent.y][agent.x] = agent.message
+            if agent.message == 1:
+                pheromone[agent.y][agent.x] += DEPOSIT
 
         # 3) Evolution check
         step_counter += 1
@@ -238,6 +263,31 @@ while running:
     # ── Rendering ──
     screen.fill((0,0,0))
     draw_world()
+    # ── INSERT HEATMAP OVERLAY HERE ──
+    heat_surf = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.SRCALPHA)
+    for y in range(GRID_SIZE):
+        for x in range(GRID_SIZE):
+            v = pheromone[y][x]
+            if v <= 0: 
+                continue
+            # map v (0…) to 0…1 (clamp), then to 0…255
+            t = max(0.0, min(1.0, v * 2.0))  
+            iv = int(t * 255)
+            # now pick a color ramp from blue→green→red
+            if t < 0.5:
+                # blue→green
+                r = 0
+                g = int(t * 2 * 255)
+                b = 255 - g
+            else:
+                # green→red
+                r = int((t - 0.5) * 2 * 255)
+                g = 255 - r
+                b = 0
+            a = iv // 3   # make it a bit more transparent
+            rect = pygame.Rect(x*TILE_SIZE, y*TILE_SIZE, TILE_SIZE, TILE_SIZE)
+            heat_surf.fill((r, g, b, a), rect)
+    screen.blit(heat_surf, (0, 0))
     for agent in agents:
         agent.draw()
 
